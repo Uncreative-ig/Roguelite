@@ -113,8 +113,8 @@ public class RogueliteLoop {
         Enemy template = pool[random.nextInt(pool.length)];
         
         // Scale enemy stats based on player level
-        int scaledHP = template.maxHealth + (player.getLevel() * 15);
-        int scaledAtk = template.getAttack() + (player.getLevel() * 2);
+        int scaledHP = template.maxHealth + (player.getLevel() * 10);
+        int scaledAtk = template.getAttack() + (player.getLevel());
         int scaledDef = template.defense + (player.getLevel() / 2);
         
         return new Enemy(
