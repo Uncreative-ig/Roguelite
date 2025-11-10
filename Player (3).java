@@ -254,7 +254,7 @@ public class Player extends Character {
 	}
 
 	// Specialization
-	public void chooseSpecialization(Scanner scanner) {  // b Added Scanner parameter
+	public void chooseSpecialization(Scanner scanner) {  // b Added Scanner parameter
 		if (specialization != null) {
 			System.out.println("You already chose specialization: " + specialization);
 			return;
@@ -278,7 +278,7 @@ public class Player extends Character {
 		}
 
 		System.out.print("Your choice: ");
-		int choice = scanner.nextInt() - 1;  // b Use passed scanner
+		int choice = scanner.nextInt() - 1;  // b Use passed scanner
 
 		if (choice < 0 || choice >= specs.length) {
 			System.out.println("Invalid choice!");
@@ -562,42 +562,51 @@ public class Player extends Character {
 	}
 
 	// ===== Leveling System =====
-	public void gainXP(int amount, Scanner scanner) {  // b Added Scanner parameter
+	public void gainXP(int amount, Scanner scanner) {  // b Added Scanner parameter
 		xp += amount;
-        System.out.println("DEBUG: Total XP = " + xp + " / " + (level * 75) + " needed");
+		System.out.println("Recieved" + xp + " / " + (level * 75));
 
-		if (xp >= level * 75) {
+		int levelsGained = 0;
+
+		// Loop to handle multiple level-ups in one XP gain.
+		while (xp >= level * 75) {
+			xp -= level * 75;
+
+			// increment level and apply per-level effects
 			level++;
+			levelsGained++;
 			updateSkills();
 			increaseSkillPower();
-			xp = 0;
+			
 			System.out.println(name + " leveled up to " + level + "!");
 
-			// Permanent buff choice
+			// Permanent buff choice (prompt once per level gained)
 			System.out.println("\nChoose a permanent buff:");
 			System.out.println("1. +10 HP");
 			System.out.println("2. +2 attack");
 			System.out.println("3. +1 defense");
 			System.out.print("Your choice: ");
 
-			int c = scanner.nextInt();  // b Use passed scanner
+			int c = scanner.nextInt();  // Use passed scanner
 
 			if (c == 1) {
 				maxHealth += 10;
 				System.out.println("Max HP increased by 10!");
 			} else if (c == 2) {
-				attack += 2;
-				System.out.println("Attack increased by 2!");
+				attack += 3;
+				System.out.println("Attack increased by 3!");
 			} else {
-				defense += 1;
-				System.out.println("Defense increased by 1!");
+				defense += 2;
+				System.out.println("Defense increased by 2!");
 			}
 			health = maxHealth;
 
-			if(level == 2) {
-				chooseSpecialization(scanner);  // b Pass scanner
+			// Specialization unlocking when reaching level 2
+			if (level == 2) {
+				chooseSpecialization(scanner);  // Pass scanner
 			}
 
+			// Unlock specialization skills at the appropriate levels
 			if (specialization != null) {
 				if (level == 3) {
 					unlockSpecSkill(1);
