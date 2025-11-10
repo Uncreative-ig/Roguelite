@@ -2,7 +2,7 @@ import java.util.*;
 
 public class Character {
 	protected String name;
-	protected static int level;
+	protected int level;
 	protected int health;
 	protected int maxHealth;
 	protected int attack;
