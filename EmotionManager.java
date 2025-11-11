@@ -2,12 +2,11 @@ import java.util.*;
 
 public class EmotionManager {
     private List<EmotionCard> allEmotions;
-    private List<EmotionCard> activeEmotions; // Emotions equipped for current battle
+    private List<EmotionCard> activeEmotions;
     private Player player;
     
     // Tracking for charge conditions
-    private int noDamageTurns = 0;
-    private int noCombatDamageTurns = 0;
+    private int consecutiveTurnsDamageDealt = 0;  // NEW: For Pride
     private int consecutiveBattlesWon = 0;
     
     public EmotionManager(Player player) {
@@ -15,8 +14,8 @@ public class EmotionManager {
         this.allEmotions = EmotionCard.createAllEmotions();
         this.activeEmotions = new ArrayList<>();
         
-        // Start with Anger unlocked
-        allEmotions.get(0).setUnlocked(true);
+        // CHANGED: Start with 0 emotions - must unlock them all
+        // Player begins completely emotionless
     }
     
     // Getters
@@ -66,13 +65,11 @@ public class EmotionManager {
         }
         
         if (unlocked.size() <= 3) {
-            // If 3 or fewer, use all
             activeEmotions.addAll(unlocked);
             System.out.println("Equipped all unlocked emotions for battle!");
             return;
         }
         
-        // Choose 2, get 1 random
         System.out.println("\n=== SELECT EMOTIONS FOR BATTLE ===");
         System.out.println("Choose 2 emotions (you'll get 1 random as well):");
         
@@ -105,26 +102,26 @@ public class EmotionManager {
         System.out.println("\nEmotions equipped for battle!");
     }
     
-    // Charge tracking
+    // FIXED: Improved charge tracking
     public void onDamageTaken(int damage) {
-        noDamageTurns = 0;
+        consecutiveTurnsDamageDealt = 0;  // Reset Pride counter
         chargeEmotion("damage_taken", 1);
         
         // Check if below half health
         if (player.health <= player.maxHealth / 2) {
             chargeEmotion("below_half_health", 1);
         }
-        
-        // Check if losing badly (below 30% health and enemy above 70%)
-        // This check happens in battle context
     }
     
-    public void onNoDamageTaken() {
-        noDamageTurns++;
-        if (noDamageTurns >= 1) {
-            chargeEmotion("no_damage_taken", 1);
+    // NEW: Track when player deals damage (for Pride)
+    public void onDamageDealt() {
+        consecutiveTurnsDamageDealt++;
+        if (consecutiveTurnsDamageDealt >= 2) {
+            chargeEmotion("damage_dealt", 1);
         }
     }
+    
+    // REMOVED: onNoDamageTaken (Pride no longer uses this)
     
     public void onMissedAttack() {
         chargeEmotion("miss_attack", 1);
@@ -134,9 +131,7 @@ public class EmotionManager {
         chargeEmotion("debuffed", 1);
     }
     
-    public void onNoDamageDealt() {
-        chargeEmotion("no_damage_dealt", 1);
-    }
+    // REMOVED: onNoDamageDealt (Ashamed no longer uses this)
     
     public void onRNGAction() {
         chargeEmotion("rng_action", 1);
@@ -150,16 +145,21 @@ public class EmotionManager {
         }
     }
     
-    public void onTurnNoCombatDamage() {
-        noCombatDamageTurns++;
-        if (noCombatDamageTurns >= 2) {
-            chargeEmotion("no_combat_damage", 1);
+    // NEW: Charge Ashamed when fighting at low health
+    public void checkLowHealthCombat() {
+        if (player.health <= player.maxHealth / 3) {
+            chargeEmotion("low_health_combat", 1);
         }
     }
     
-    public void resetTurnTracking() {
-        noCombatDamageTurns = 0;
+    // NEW: Charge Bored when at full health
+    public void checkFullHealth() {
+        if (player.health >= player.maxHealth) {
+            chargeEmotion("full_health", 1);
+        }
     }
+    
+    // REMOVED: onTurnNoCombatDamage and resetTurnTracking
     
     public void checkLosingBadly(int playerHP, int playerMaxHP, int enemyHP, int enemyMaxHP) {
         double playerPercent = (double)playerHP / playerMaxHP;
@@ -205,14 +205,14 @@ public class EmotionManager {
         System.out.println();
     }
     
-    // Reset cooldowns (for post-battle choice)
+    // Reset cooldowns
     public void resetAllCooldowns() {
         for (EmotionCard e : allEmotions) {
             e.resetCooldown();
         }
     }
     
-    // Reduce charge requirement (for post-battle choice)
+    // Reduce charge requirement
     public void reduceChargeRequirement(String emotionName) {
         for (EmotionCard e : allEmotions) {
             if (e.getName().equalsIgnoreCase(emotionName)) {
