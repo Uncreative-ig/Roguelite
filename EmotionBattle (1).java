@@ -7,11 +7,10 @@ public class EmotionBattle {
 	private EmotionManager emotionManager;
 	private int turn = 0;
 
-	// Tracking for emotion charges
+	// FIXED: Simplified tracking for emotion charges
 	private int playerDamageDealtThisTurn = 0;
-	private int enemyDamageDealtThisTurn = 0;
 	private int playerHealthAtTurnStart = 0;
-	private int turnsSincePlayerDamage = 0;
+	private int enemyHealthAtTurnStart = 0;
 
 	public EmotionBattle(Player player, Enemy enemy, EmotionManager emotionManager) {
 		this.player = player;
@@ -30,8 +29,8 @@ public class EmotionBattle {
 			// Start of turn setup
 			turn++;
 			playerHealthAtTurnStart = player.health;
+			enemyHealthAtTurnStart = enemy.health;
 			playerDamageDealtThisTurn = 0;
-			enemyDamageDealtThisTurn = 0;
 
 			// Update buffs and effects
 			player.updateBuffs();
@@ -70,8 +69,18 @@ public class EmotionBattle {
 				handlePlayerAction();
 			}
 
-			if (player.hasExtraTurn()) {
+			// FIXED: Check if enemy died from player action
+			if (!enemy.isAlive()) {
+				playerDamageDealtThisTurn = enemyHealthAtTurnStart - enemy.health;
+			}
+
+			// Extra turn
+			if (player.hasExtraTurn() && enemy.isAlive()) {
+				System.out.println("\n" + player.getName() + " gets an extra turn!");
+				int enemyHealthBefore = enemy.health;
 				handlePlayerAction();
+				playerDamageDealtThisTurn += Math.max(0, enemyHealthBefore - enemy.health);
+				player.setExtraTurn(false);  // FIXED: Reset extra turn flag
 			}
 
 			// Enemy's turn if still alive
@@ -84,9 +93,7 @@ public class EmotionBattle {
 				} else if (player.isInvisible()) {
 					handleInvisiblePlayer();
 				} else {
-					int enemyHealthBefore = enemy.health;
 					enemy.useSkill(player);
-					enemyDamageDealtThisTurn = enemyHealthBefore - enemy.health;
 				}
 			}
 
@@ -101,8 +108,6 @@ public class EmotionBattle {
 		if (player.isAlive()) {
 			System.out.println("\n*** VICTORY! ***");
 			System.out.println("You defeated the " + enemy.getName() + "!");
-
-			// Don't give XP here - return the reward amount instead
 			return true;
 		} else {
 			System.out.println("\n*** DEFEAT ***");
@@ -111,7 +116,6 @@ public class EmotionBattle {
 		}
 	}
 
-	// Add this new method to get XP reward without giving it
 	public int getXPReward() {
 		return enemy.getXpReward();
 	}
@@ -123,15 +127,11 @@ public class EmotionBattle {
 		} else if (player.isStunned()) {
 			System.out.println(player.name + " is stunned, their turn is skipped");
 		}
-		turnsSincePlayerDamage++;
-		emotionManager.onNoDamageDealt();
 	}
 
 	private void handleInvisibleEnemy() {
 		System.out.println(enemy.name + " is invisible. " + player.name + " misses!");
 		emotionManager.onMissedAttack();
-		turnsSincePlayerDamage++;
-		emotionManager.onNoDamageDealt();
 	}
 
 	private void handlePlayerAction() {
@@ -142,23 +142,12 @@ public class EmotionBattle {
 		int choice = scanner.nextInt();
 		System.out.println();
 
+		int enemyHealthBefore = enemy.health;
+
 		if (choice == 1) {
-			int enemyHealthBefore = enemy.health;
-			int dmg = player.attack;
-
-			if (player.tempCritBoost > 0.0) {
-				System.out.println("CRITICAL HIT");
-				dmg *= 1.5;
-			}
-
-			enemy.takeDamage(dmg, player);
-			playerDamageDealtThisTurn = enemyHealthBefore - enemy.health;
-
-			if (playerDamageDealtThisTurn > 0) {
-				turnsSincePlayerDamage = 0;
-			} else {
-				turnsSincePlayerDamage++;
-			}
+			// FIXED: Use proper damage calculation
+			int damage = player.getRanDmg(0, player);  // Base 0, adds attack in getRanDmg
+			enemy.takeDamage(damage, player);
 
 		} else if (choice == 2) {
 			List<Skills> skills = player.getSkills();
@@ -177,16 +166,10 @@ public class EmotionBattle {
 				Skills selected = skills.get(skillChoice);
 				if (!selected.isReady()) {
 					System.out.println("That skill is still on cooldown!");
+					// FIXED: Don't consume the turn if skill is on cooldown
+					return;
 				} else {
-					int enemyHealthBefore = enemy.health;
 					player.useSkill(skillChoice, enemy);
-					playerDamageDealtThisTurn = enemyHealthBefore - enemy.health;
-
-					if (playerDamageDealtThisTurn > 0) {
-						turnsSincePlayerDamage = 0;
-					} else {
-						turnsSincePlayerDamage++;
-					}
 
 					// Track RNG actions for Goofy emotion
 					if (selected.getType().contains("Random")) {
@@ -195,6 +178,9 @@ public class EmotionBattle {
 				}
 			}
 		}
+
+		// FIXED: Calculate damage dealt properly
+		playerDamageDealtThisTurn = Math.max(0, enemyHealthBefore - enemy.health);
 	}
 
 	private void handleEnemySkipTurn() {
@@ -210,33 +196,31 @@ public class EmotionBattle {
 		System.out.println(player.name + " is invisible. " + enemy.name + " misses!");
 	}
 
+	// FIXED: Better emotion charge tracking logic
 	private void trackEmotionCharges() {
 		// Check if player took damage
-		if (player.health < playerHealthAtTurnStart) {
-			int damageTaken = playerHealthAtTurnStart - player.health;
-			emotionManager.onDamageTaken(damageTaken);
-		} else {
-			emotionManager.onNoDamageTaken();
+		int actualDamageTaken = playerHealthAtTurnStart - player.health;
+		if (actualDamageTaken > 0) {
+			emotionManager.onDamageTaken(actualDamageTaken);
 		}
 
-		// Check if no damage dealt this turn
-		if (playerDamageDealtThisTurn == 0 && turnsSincePlayerDamage >= 2) {
-			emotionManager.onNoDamageDealt();
+		// Check if player dealt damage (for Pride)
+		if (playerDamageDealtThisTurn > 0) {
+			emotionManager.onDamageDealt();
 		}
 
-		// Check if no combat damage on both sides
-		if (playerDamageDealtThisTurn == 0 && enemyDamageDealtThisTurn == 0) {
-			emotionManager.onTurnNoCombatDamage();
-		} else {
-			emotionManager.resetTurnTracking();
-		}
+		// Check if fighting at low health (for Ashamed)
+		emotionManager.checkLowHealthCombat();
+		
+		// Check if at full health (for Bored)
+		emotionManager.checkFullHealth();
 
-		// Check if losing badly
+		// Check if losing badly (for Hope)
 		if (player.isAlive() && enemy.isAlive()) {
 			emotionManager.checkLosingBadly(player.health, player.maxHealth, enemy.health, enemy.maxHealth);
 		}
 
-		// Check for debuffs
+		// Check for debuffs (for Confusion)
 		if (player.attDeBuff > 0 || player.defDeBuff > 0) {
 			emotionManager.onDebuffApplied();
 		}
