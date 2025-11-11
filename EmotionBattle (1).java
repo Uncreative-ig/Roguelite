@@ -5,17 +5,24 @@ public class EmotionBattle {
 	private Enemy enemy;
 	private Scanner scanner;
 	private EmotionManager emotionManager;
+	private Weather weather;
+	private BattleEvent battleEvent;
 	private int turn = 0;
 
-	// FIXED: Simplified tracking for emotion charges
+	// Tracking for emotion charges
 	private int playerDamageDealtThisTurn = 0;
 	private int playerHealthAtTurnStart = 0;
 	private int enemyHealthAtTurnStart = 0;
+	private int playerAttackCount = 0;
+	private boolean firstHealUsed = false;
 
-	public EmotionBattle(Player player, Enemy enemy, EmotionManager emotionManager) {
+	public EmotionBattle(Player player, Enemy enemy, EmotionManager emotionManager,
+	                     Weather weather, BattleEvent battleEvent) {
 		this.player = player;
 		this.enemy = enemy;
 		this.emotionManager = emotionManager;
+		this.weather = weather;
+		this.battleEvent = battleEvent;
 		this.scanner = new Scanner(System.in);
 	}
 
@@ -24,6 +31,11 @@ public class EmotionBattle {
 
 		player.resetAllCooldowns();
 		enemy.resetAllCooldowns();
+		
+		// Apply battle event start effects
+		if (battleEvent != null) {
+			battleEvent.applyBattleStart(player, enemy);
+		}
 
 		while (player.isAlive() && enemy.isAlive()) {
 			// Start of turn setup
@@ -31,6 +43,17 @@ public class EmotionBattle {
 			playerHealthAtTurnStart = player.health;
 			enemyHealthAtTurnStart = enemy.health;
 			playerDamageDealtThisTurn = 0;
+			playerAttackCount = 0;
+
+			// Apply weather at start of turn
+			if (weather != null) {
+				weather.applyStartOfTurn(player, enemy);
+			}
+			
+			// Apply battle event turn start
+			if (battleEvent != null) {
+				battleEvent.applyTurnStart(player, enemy, turn);
+			}
 
 			// Update buffs and effects
 			player.updateBuffs();
@@ -69,7 +92,7 @@ public class EmotionBattle {
 				handlePlayerAction();
 			}
 
-			// FIXED: Check if enemy died from player action
+			// Check if enemy died from player action
 			if (!enemy.isAlive()) {
 				playerDamageDealtThisTurn = enemyHealthAtTurnStart - enemy.health;
 			}
@@ -80,7 +103,7 @@ public class EmotionBattle {
 				int enemyHealthBefore = enemy.health;
 				handlePlayerAction();
 				playerDamageDealtThisTurn += Math.max(0, enemyHealthBefore - enemy.health);
-				player.setExtraTurn(false);  // FIXED: Reset extra turn flag
+				player.setExtraTurn(false);
 			}
 
 			// Enemy's turn if still alive
@@ -95,6 +118,16 @@ public class EmotionBattle {
 				} else {
 					enemy.useSkill(player);
 				}
+			}
+			
+			// Apply weather at end of turn
+			if (weather != null) {
+				weather.applyEndOfTurn(player, enemy);
+			}
+			
+			// Apply battle event turn end
+			if (battleEvent != null) {
+				battleEvent.applyTurnEnd(player, enemy);
 			}
 
 			// End of turn emotion charge tracking
@@ -145,12 +178,47 @@ public class EmotionBattle {
 		int enemyHealthBefore = enemy.health;
 
 		if (choice == 1) {
-			// FIXED: Use proper damage calculation
-			int damage = player.getRanDmg(0, player);  // Base 0, adds attack in getRanDmg
+			// Normal attack
+			int damage = player.getRanDmg(0, player);
+			
+			// Apply weather modification
+			if (weather != null) {
+				damage = weather.modifyDamage(damage, player, enemy);
+			}
+			
+			// Apply battle event modification
+			if (battleEvent != null) {
+				damage = battleEvent.modifyDamage(damage, player, enemy, turn);
+			}
+			
+			// Apply snow drift penalty (first attack half damage)
+			if (battleEvent != null && battleEvent.hasSnowDriftPenalty(playerAttackCount)) {
+				damage = damage / 2;
+				System.out.println("  -> Snow hinders your movement! Damage halved.");
+			}
+			
+			// Apply lava pool damage
+			if (battleEvent != null) {
+				battleEvent.applyLavaPoolDamage(player);
+			}
+			
 			enemy.takeDamage(damage, player);
+			
+			// Apply ice patch freeze
+			if (battleEvent != null) {
+				battleEvent.applyIcePatchEffect(enemy);
+			}
+			
+			playerAttackCount++;
 
 		} else if (choice == 2) {
 			List<Skills> skills = player.getSkills();
+			
+			// Check for narrow passage restriction
+			if (battleEvent != null && battleEvent.isNarrowPassage()) {
+				System.out.println("Only single-target skills can be used here!");
+			}
+			
 			for (int i = 0; i < skills.size(); i++) {
 				Skills skill = skills.get(i);
 				if (!skill.isReady()) {
@@ -166,10 +234,17 @@ public class EmotionBattle {
 				Skills selected = skills.get(skillChoice);
 				if (!selected.isReady()) {
 					System.out.println("That skill is still on cooldown!");
-					// FIXED: Don't consume the turn if skill is on cooldown
 					return;
 				} else {
+					// Use skill with modifications
 					player.useSkill(skillChoice, enemy);
+					
+					// Apply lava pool damage if attacking
+					if (selected.getType().contains("attack") || selected.getType().contains("Dmg")) {
+						if (battleEvent != null) {
+							battleEvent.applyLavaPoolDamage(player);
+						}
+					}
 
 					// Track RNG actions for Goofy emotion
 					if (selected.getType().contains("Random")) {
@@ -179,7 +254,7 @@ public class EmotionBattle {
 			}
 		}
 
-		// FIXED: Calculate damage dealt properly
+		// Calculate damage dealt properly
 		playerDamageDealtThisTurn = Math.max(0, enemyHealthBefore - enemy.health);
 	}
 
@@ -196,7 +271,7 @@ public class EmotionBattle {
 		System.out.println(player.name + " is invisible. " + enemy.name + " misses!");
 	}
 
-	// FIXED: Better emotion charge tracking logic
+	// Better emotion charge tracking logic
 	private void trackEmotionCharges() {
 		// Check if player took damage
 		int actualDamageTaken = playerHealthAtTurnStart - player.health;
@@ -223,6 +298,17 @@ public class EmotionBattle {
 		// Check for debuffs (for Confusion)
 		if (player.attDeBuff > 0 || player.defDeBuff > 0) {
 			emotionManager.onDebuffApplied();
+		}
+		
+		// Crystal formation boosts emotion charging
+		if (battleEvent != null && battleEvent.hasFasterEmotionCharge()) {
+			// Add extra charge to all active emotions
+			for (EmotionCard e : emotionManager.getActiveEmotions()) {
+				if (e.getChargeTicks() > 0 && e.getChargeTicks() < e.getMaxChargeTicks()) {
+					e.addCharge(1);
+					System.out.println("  -> Crystals amplify " + e.getName() + "!");
+				}
+			}
 		}
 	}
 }
